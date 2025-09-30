@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>TopSun - Dashboard Operacional</title>
+    <!-- Libs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+
+    <!-- BIBLIOTECAS PARA O MAPA (LEAFLET.JS  ) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --primary-color: #6f42c1;
+            --secondary-color: #fd7e14;
+            --profit-color: #28a745;
+            --bg-color: #f4f7f6;
+            --card-bg: #FFFFFF;
+            --text-color: #343a40;
+            --shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.08  );
+        }
+        body {
+            background-color: var(--bg-color);
+            font-family: 'Poppins', sans-serif;
+            color: var(--text-color);
+        }
+        .main-header {
+            background-color: var(--card-bg);
+            padding: 2rem 1rem;
+            text-align: center;
+            border-bottom: 1px solid #dee2e6;
+            margin-bottom: 2rem;
+        }
+        .main-header img { max-width: 220px; margin-bottom: 1rem; }
+        .main-header h1 { font-weight: 700; color: var(--text-color); }
+        .main-header p { color: #6c757d; font-size: 1.1rem; }
+
+        .card { background: var(--card-bg); border-radius: 16px; box-shadow: var(--shadow); border: none; }
+        .chart-container { height: 350px; padding: 1.5rem; }
+        .chart-container a { cursor: pointer; } /* Faz o título do gráfico parecer clicável */
+        .kpi-card { text-align: center; padding: 1.5rem; }
+        .kpi-card .kpi-value { font-size: 2rem; font-weight: 700; }
+        .kpi-card .kpi-label { font-weight: 500; color: #6c757d; }
+        .kpi-value.profit { color: var(--profit-color); }
+
+        #map {
+            height: 700px;
+            width: 100%;
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+        }
+        .leaflet-div-icon {
+            background: transparent;
+            border: none;
+        }
+        .distance-tooltip {
+            background-color: rgba(255, 255, 255, 0.8);
+            border: 1px solid #0d6efd;
+            border-radius: 4px;
+            color: #0d6efd;
+            font-weight: bold;
+            padding: 2px 6px;
+        }
+    </style>
+</head>
+<body>
+    <header class="main-header">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo TopSun">
+        <h1>Dashboard Operacional</h1>
+        <p>Análise Integrada de Custos, Tarefas e Lucratividade</p>
+    </header>
+    <main class="container my-4">
+        <!-- NAVEGAÇÃO POR ABAS -->
+        <ul class="nav nav-tabs mb-3" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="analise-custos-tab" data-bs-toggle="tab" data-bs-target="#analise-custos-pane" type="button" role="tab">Análise de Custos</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="mapa-reparos-tab" data-bs-toggle="tab" data-bs-target="#mapa-reparos-pane" type="button" role="tab">Mapa de Operações</button>
+            </li>
+        </ul>
+
+        <!-- CONTEÚDO DAS ABAS -->
+        <div class="tab-content" id="myTabContent">
+            <!-- ABA 1: ANÁLISE DE CUSTOS -->
+            <div class="tab-pane fade show active" id="analise-custos-pane" role="tabpanel" tabindex="0">
+                <section class="card p-4 mb-4">
+                     <div class="row align-items-end">
+                        <div class="col-lg-7"><h5 class="fw-bold mb-3">🚀 Iniciar Análise de Custos</h5><div class="row"><div class="col-md-6 mb-2"><label for="custosFile" class="form-label small">Planilha de Custos (17 colunas )</label><input type="file" id="custosFile" class="form-control form-control-sm" accept=".xlsx,.xls"></div><div class="col-md-6 mb-2"><label for="tarefasFile" class="form-label small">Planilha de Tarefas (24 colunas)</label><input type="file" id="tarefasFile" class="form-control form-control-sm" accept=".xlsx,.xls"></div></div></div>
+                        <div class="col-lg-2 d-grid mb-2"><button class="btn text-white" style="background-color: var(--primary-color);" onclick="uploadPlanilhas()">Analisar Dados</button></div>
+                        <div class="col-lg-3 mb-2"><div id="statusMsg" class="text-center small h-100 d-flex align-items-center justify-content-center"></div></div>
+                    </div>
+                </section>
+                <section id="filtros-container" class="card p-4 mb-4" style="display: none;">
+                    <h5 class="mb-3 fw-bold">🔍 Filtros de Análise</h5>
+                    <div class="row">
+                        <!-- Coluna 1: Filtros Principais -->
+                        <div class="col-lg-9">
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label for="filtro-instalador" class="form-label small fw-medium">Instalador</label>
+                                    <select id="filtro-instalador" class="form-select form-select-sm"><option value="">Todos Instaladores</option></select>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="filtro-cliente" class="form-label small fw-medium">Cliente</label>
+                                    <select id="filtro-cliente" class="form-select form-select-sm"><option value="">Todos Clientes</option></select>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="filtro-tipo_servico" class="form-label small fw-medium">Tipo de Serviço</label>
+                                    <select id="filtro-tipo_servico" class="form-select form-select-sm"><option value="">Todo Tipo de Serviço</option></select>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="filtro-categoria" class="form-label small fw-medium">Categoria</label>
+                                    <select id="filtro-categoria" class="form-select form-select-sm"><option value="">Todas Categorias</option></select>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="filtro-status" class="form-label small fw-medium">Status da OS</label>
+                                    <select id="filtro-status" class="form-select form-select-sm"><option value="">Todos Status</option></select>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="filtro-resp_financeira" class="form-label small fw-medium">Resp. Financeira</label>
+                                    <select id="filtro-resp_financeira" class="form-select form-select-sm"><option value="">Toda Resp. Financeira</option></select>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="filtro-usuario" class="form-label small fw-medium">Usuário de Abertura</label>
+                                    <select id="filtro-usuario" class="form-select form-select-sm"><option value="">Todos Usuários</option></select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Coluna 2: Filtros de Data e Botões -->
+                        <div class="col-lg-3 border-start">
+                            <div class="ps-lg-3">
+                                <div class="mb-3">
+                                    <label for="filtro-data-inicio" class="form-label small fw-medium">Data de Início</label>
+                                    <input type="date" id="filtro-data-inicio" class="form-control form-control-sm">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="filtro-data-fim" class="form-label small fw-medium">Data de Fim</label>
+                                    <input type="date" id="filtro-data-fim" class="form-control form-control-sm">
+                                </div>
+                                <div class="d-grid gap-2">
+                                    <button class="btn btn-primary" onclick="aplicarFiltros()">✓ Aplicar Filtros</button>
+                                    <button class="btn btn-outline-secondary" onclick="zerarFiltros()">✗ Limpar Filtros</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                <div id="dashboard-content" style="display: none;">
+                    <section class="row mb-4">
+                        <div class="col-lg-3 col-md-6 mb-4"><div class="card kpi-card"><div id="kpi-lucro-total" class="kpi-value profit">R$ 0,00</div><div class="kpi-label">Lucro Total</div></div></div>
+                        <div class="col-lg-3 col-md-6 mb-4"><div class="card kpi-card"><div id="kpi-margem-lucro-geral" class="kpi-value profit">0,00%</div><div class="kpi-label">Margem de Lucro</div></div></div>
+                        <div class="col-lg-3 col-md-6 mb-4"><div class="card kpi-card"><div id="kpi-valor-venda-total" class="kpi-value" style="color: var(--primary-color);">R$ 0,00</div><div class="kpi-label">Venda Total</div></div></div>
+                        <div class="col-lg-3 col-md-6 mb-4"><div class="card kpi-card"><div id="kpi-total-ordens" class="kpi-value">0</div><div class="kpi-label">Total de Ordens</div></div></div>
+                    </section>
+                    <section class="row mb-4">
+                        <div class="col-lg-6 col-md-12 mb-4">
+                            <div class="card chart-container">
+                                <a id="title-g-pizza-ordens-responsavel" class="text-decoration-none text-dark">
+                                    <h5>Proporção de Ordens (Responsabilidade Financeira)</h5>
+                                </a>
+                                <canvas id="g-pizza-ordens-responsavel"></canvas>
+                            </div>
+                        </div>
+                        <div class="col-lg-6 col-md-12 mb-4">
+                            <div class="card chart-container">
+                                <a id="title-g-margem-instalador" class="text-decoration-none text-dark">
+                                    <h5>Top 5 Instaladores (Margem de Lucro)</h5>
+                                </a>
+                                <canvas id="g-margem-instalador"></canvas>
+                            </div>
+                        </div>
+                        <div class="col-lg-6 col-md-12 mb-4">
+                            <div class="card chart-container">
+                                <a id="title-g-margem-servico" class="text-decoration-none text-dark">
+                                    <h5>Top 5 Tipos de Serviço (Margem de Lucro)</h5>
+                                </a>
+                                <canvas id="g-margem-servico"></canvas>
+                            </div>
+                        </div>
+                        <div class="col-lg-6 col-md-12 mb-4">
+                            <div class="card chart-container">
+                                <a id="title-g-lucro" class="text-decoration-none text-dark">
+                                    <h5>Top 5 Instaladores (Lucro Total R$)</h5>
+                                </a>
+                                <canvas id="g-lucro"></canvas>
+                            </div>
+                        </div>
+                        <div class="col-lg-6 col-md-6 mb-4">
+                            <div class="card chart-container">
+                                <a id="title-g1" class="text-decoration-none text-dark">
+                                    <h5>Top 5 Instaladores (Qtd. Ordens)</h5>
+                                </a>
+                                <canvas id="g1"></canvas>
+                            </div>
+                        </div>
+                        <div class="col-lg-6 col-md-6 mb-4">
+                            <div class="card chart-container">
+                                <a id="title-g3" class="text-decoration-none text-dark">
+                                    <h5>Top 5 Clientes (Qtd. Obras)</h5>
+                                </a>
+                                <canvas id="g3"></canvas>
+                            </div>
+                        </div>
+                        <div class="col-lg-6 col-md-6 mb-4">
+                            <div class="card chart-container">
+                                <a id="title-g-custo-usuario" class="text-decoration-none text-dark">
+                                    <h5>Top 5 Clientes (Custo Total Gerado)</h5>
+                                </a>
+                                <canvas id="g-custo-usuario"></canvas>
+                            </div>
+                        </div>
+                        <div class="col-lg-6 col-md-6 mb-4">
+                            <div class="card chart-container">
+                                <a id="title-g-custo-servico" class="text-decoration-none text-dark">
+                                    <h5>Top 5 Tipos de Serviço (Custo Médio R$)</h5>
+                                </a>
+                                <canvas id="g-custo-servico"></canvas>
+                            </div>
+                        </div>
+                        <div class="col-lg-6 col-md-6 mb-4">
+                            <div class="card chart-container">
+                                <a id="title-g-custo-equipe-topsun" class="text-decoration-none text-dark">
+                                    <h5>Top 5 Equipes (Custo Médio Reparo - TOPSUN)</h5>
+                                </a>
+                                <canvas id="g-custo-equipe-topsun"></canvas>
+                            </div>
+                        </div>
+                        <div class="col-lg-6 col-md-6 mb-4">
+                            <div class="card chart-container">
+                                <a id="title-g-equipes-retrabalhos" class="text-decoration-none text-dark">
+                                    <h5>Top 5 Equipes (Índice de Retrabalhos)</h5>
+                                </a>
+                                <canvas id="g-equipes-retrabalhos"></canvas>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="row mb-5">
+                        <div class="col-12">
+                            <div class="card p-4">
+                                <h5 class="mb-3">📋 Detalhamento Completo de Ordens de Serviço</h5>
+                                <div class="table-responsive">
+                                    <table id="tabela-os" class="table table-striped table-hover" style="width:100%"></table>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+            <!-- ABA 2: MAPA DE OPERAÇÕES -->
+            <div class="tab-pane fade" id="mapa-reparos-pane" role="tabpanel" tabindex="0">
+                <section class="card p-4 mb-4">
+                    <div class="row align-items-end">
+                        <div class="col-lg-7"><h5 class="fw-bold mb-3">🗺️ Carregar Reparos em Aberto</h5><div class="row"><div class="col-md-8 mb-2"><label for="reparosFile" class="form-label small">Planilha de Reparos</label><input type="file" id="reparosFile" class="form-control form-control-sm" accept=".xlsx,.xls"></div></div></div>
+                        <div class="col-lg-2 d-grid mb-2"><button class="btn text-white" style="background-color: var(--secondary-color);" onclick="gerarMapa()">Carregar Reparos</button></div>
+                        <div class="col-lg-3 mb-2"><div id="statusMapa" class="text-center small h-100 d-flex align-items-center justify-content-center"></div></div>
+                    </div>
+                </section>
+
+                <section class="card p-4 mb-4">
+                    <div class="row align-items-end">
+                        <div class="col-lg-7"><h5 class="fw-bold mb-3">⚡ Carregar Instalações em Aberto</h5><div class="row"><div class="col-md-8 mb-2"><label for="instalacoesFile" class="form-label small">Planilha de Instalações</label><input type="file" id="instalacoesFile" class="form-control form-control-sm" accept=".xlsx,.xls"></div></div></div>
+                        <div class="col-lg-2 d-grid mb-2"><button class="btn text-white" style="background-color: var(--profit-color);" onclick="uploadInstalacoes()">Carregar Instalações</button></div>
+                        <div class="col-lg-3 mb-2"><div id="statusInstalacoes" class="text-center small h-100 d-flex align-items-center justify-content-center"></div></div>
+                    </div>
+                </section>
+
+                <section class="card p-4 mb-4" id="busca-proximidade-container" style="display: none;">
+                    <h5 class="fw-bold mb-3">📍 Buscar Pontos Próximos</h5>
+                    <div class="row align-items-end">
+                        <div class="col-lg-8 mb-2">
+                            <label for="enderecoBusca" class="form-label small">Digite um endereço ou coordenadas (ex: -23.5505, -46.6333)</label>
+                            <input type="text" id="enderecoBusca" class="form-control form-control-sm" placeholder="Av. Paulista, 1578, São Paulo">
+                        </div>
+                        <div class="col-lg-2 d-grid mb-2">
+                            <button class="btn btn-primary" onclick="buscarProximidade()">Buscar 5 Mais Próximos</button>
+                        </div>
+                         <div class="col-lg-2 mb-2">
+                            <div id="statusBusca" class="text-center small h-100 d-flex align-items-center justify-content-center"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="filtros-mapa-container" class="card p-3 mb-4" style="display: none;">
+                    <h6 class="mb-3">🔍 Filtros do Mapa</h6>
+                    <div class="row g-2 align-items-center">
+                        <div class="col-md"><select id="filtro-mapa-tipo" class="form-select form-select-sm" onchange="aplicarFiltrosMapa()"><option value="">Todos os Tipos</option><option value="reparo">Reparos</option><option value="instalacao">Instalações</option></select></div>
+                        <div class="col-md"><select id="filtro-mapa-instalador" class="form-select form-select-sm" onchange="aplicarFiltrosMapa()"><option value="">Todos Instaladores</option></select></div>
+                        <div class="col-md-auto d-grid"><button class="btn btn-outline-secondary btn-sm" onclick="aplicarFiltrosMapa(true)">Limpar Filtros</button></div>
+                    </div>
+                </section>
+
+                <section class="row mb-4"><div class="col-12"><div id="map"></div></div></section>
+
+                <section id="lista-proximidade-container" class="row mb-5" style="display: none;">
+                    <div class="col-12">
+                        <div class="card p-4">
+                            <h5 class="mb-3">📍 5 Pontos Mais Próximos (Reparos e Instalações)</h5>
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover">
+                                    <thead><tr><th>#</th><th>Tipo</th><th>Cliente</th><th>Cidade</th><th>Instalador</th><th>Distância</th><th>Tempo de Viagem</th></tr></thead>
+                                    <tbody id="lista-proximidade-body"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="tabela-mapa-container" class="row mb-5" style="display: none;">
+                    <div class="col-12">
+                        <div class="card p-4">
+                            <h5 class="mb-3">📋 Detalhamento de Pontos no Mapa</h5>
+                            <div class="table-responsive">
+                                <table id="tabela-mapa" class="table table-striped table-hover" style="width:100%"></table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+        <!-- Modais -->
+        <div class="modal fade" id="rankingModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="rankingModalLabel">Ranking</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body p-0"><div class="table-responsive"><table class="table table-striped table-hover mb-0"><thead id="ranking-tabela-head"></thead><tbody id="ranking-tabela-body"></tbody></table></div></div></div></div></div>
+        <div class="modal fade" id="detalhesModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered modal-xl"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="detalhesModalLabel">Detalhes</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="table-responsive"><table id="detalhes-tabela" class="table table-striped table-hover" style="width:100%"></table></div></div></div></div></div>
+    </main>
+    <!-- Scripts -->
+    <script src="https://code.jquery.com/jquery-3.7.0.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+               // --- VARIÁVEIS GLOBAIS ---
+        let charts = {};
+        let map;
+        let marcadores = L.layerGroup( );
+        let marcadoresBusca = L.layerGroup();
+        let todosOsReparos = [];
+        let todasAsInstalacoes = [];
+        const CHART_COLORS = { primary: '#6f42c1', secondary: '#fd7e14', profit: '#28a745', info: '#0dcaf0', success: '#20c997' };
+        const CORES_INSTALADORES = ['#e6194B', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabed4', '#008080', '#e6beff', '#9A6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#a9a9a9'];
+
+        // --- FUNÇÕES GERAIS ---
+        function formatarMoeda(valor) { return (valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+
+        async function handleFetch(url, options, statusElement) {
+            statusElement.innerHTML = '<span class="text-info">Carregando...</span>';
+            try {
+                const response = await fetch(url, options);
+                const data = await response.json();
+                if (response.ok) {
+                    statusElement.innerHTML = `<span class="text-success">${data.mensagem || 'Sucesso!'}</span>`;
+                    return data;
+                } else {
+                    statusElement.innerHTML = `<span class="text-danger">Erro: ${data.erro}</span>`;
+                    console.error(`Erro da API em ${url}:`, data.erro);
+                    return null;
+                }
+            } catch (error) {
+                statusElement.innerHTML = '<span class="text-danger">Erro de conexão. Verifique o console (F12).</span>';
+                console.error(`Erro de fetch em ${url}:`, error);
+                return null;
+            }
+        }
+
+        // --- LÓGICA DA ABA DE ANÁLISE DE CUSTOS ---
+        async function uploadPlanilhas() {
+            const custosFile = document.getElementById("custosFile").files[0];
+            const tarefasFile = document.getElementById("tarefasFile").files[0];
+            if (!custosFile || !tarefasFile) {
+                document.getElementById("statusMsg").innerHTML = '<span class="text-danger">Selecione ambos os arquivos.</span>';
+                return;
+            }
+            const formData = new FormData();
+            formData.append('custos', custosFile);
+            formData.append('tarefas', tarefasFile);
+            const data = await handleFetch('/api/upload-dados', { method: 'POST', body: formData }, document.getElementById("statusMsg"));
+            if (data) {
+                popularFiltros(data.filtros);
+                document.getElementById('filtros-container').style.display = 'block';
+                document.getElementById('dashboard-content').style.display = 'block';
+                aplicarFiltros();
+            }
+        }
+
+        function popularFiltros(filtros) {
+            const selects = { 'filtro-instalador': filtros.instaladores, 'filtro-usuario': filtros.usuarios, 'filtro-cliente': filtros.clientes, 'filtro-resp_financeira': filtros.resp_financeira, 'filtro-tipo_servico': filtros.tipo_servico, 'filtro-categoria': filtros.categorias, 'filtro-status': filtros.status_os };
+            for (const id in selects) {
+                const select = document.getElementById(id);
+                const label = select.options[0].text;
+                select.innerHTML = `<option value="">${label}</option>`;
+                (selects[id] || []).forEach(item => { select.innerHTML += `<option value="${item}">${item}</option>`; });
+            }
+        }
+
+        async function aplicarFiltros() {
+            const filtros = {
+                instalador: document.getElementById('filtro-instalador').value, usuario: document.getElementById('filtro-usuario').value, cliente: document.getElementById('filtro-cliente').value,
+                resp_financeira: document.getElementById('filtro-resp_financeira').value, tipo_servico: document.getElementById('filtro-tipo_servico').value, categoria: document.getElementById('filtro-categoria').value,
+                status_os: document.getElementById('filtro-status').value, data_inicio: document.getElementById('filtro-data-inicio').value, data_fim: document.getElementById('filtro-data-fim').value,
+            };
+            const data = await handleFetch('/api/estatisticas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(filtros) }, document.createElement('div'));
+            if (data) {
+                document.getElementById('kpi-lucro-total').innerText = formatarMoeda(data.kpi_lucro_total);
+                document.getElementById('kpi-margem-lucro-geral').innerText = `${(data.kpi_margem_lucro_geral || 0).toFixed(2)}%`;
+                document.getElementById('kpi-valor-venda-total').innerText = formatarMoeda(data.kpi_valor_venda_total);
+                document.getElementById('kpi-total-ordens').innerText = data.kpi_total_ordens;
+                
+                updateChart('g-margem-instalador', 'bar', 'Margem de Lucro (%)', data.top_instaladores_margem_lucro);
+                updateChart('g-margem-servico', 'bar', 'Margem de Lucro (%)', data.top_tipos_servico_margem_lucro);
+                updateChart('g-lucro', 'bar', 'Lucro Total (R$)', data.top_instaladores_lucratividade);
+                updateChart('g1', 'bar', 'Qtd. Ordens', data.top_instaladores_ordens);
+                updateChart('g3', 'bar', 'Qtd. Obras', data.top_clientes_ordens);
+                updateChart('g-custo-usuario', 'bar', 'Custo Total Gerado (R$)', data.top_clientes_custo);
+                updateChart('g-custo-servico', 'bar', 'Custo Médio (R$)', data.top_servicos_custo_medio);
+                updateChart('g-custo-equipe-topsun', 'bar', 'Custo Médio (R$)', data.top_equipes_custo_topsun);
+                updateChart('g-equipes-retrabalhos', 'bar', 'Qtd. Retrabalhos', data.top_equipes_retrabalhos);
+                
+                updatePieChart('g-pizza-ordens-responsavel', data.ordens_por_responsavel, 'Qtd. Ordens');
+                
+                carregarTabelaOS();
+            }
+        }
+
+        function zerarFiltros() {
+            const container = document.getElementById('filtros-container');
+            const inputs = container.querySelectorAll('input, select');
+            inputs.forEach(input => { input.value = ''; });
+            aplicarFiltros();
+        }
+
+        function updatePieChart(chartId, data, labelText) {
+            const ctx = document.getElementById(chartId).getContext('2d');
+            if (charts[chartId]) {
+                charts[chartId].destroy();
+            }
+
+            const labels = Object.keys(data || {});
+            const values = Object.values(data || {});
+
+            const backgroundColors = labels.map(label => {
+                if (label.toUpperCase().includes('TOPSUN')) return '#e6194B';
+                if (label.toUpperCase().includes('CLIENTE')) return '#3cb44b';
+                // Fallback color
+                const colorKeys = Object.keys(CHART_COLORS);
+                const randomKey = colorKeys[Math.floor(Math.random() * colorKeys.length)];
+                return CHART_COLORS[randomKey];
+            });
+
+            charts[chartId] = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: labelText,
+                        data: values,
+                        backgroundColor: backgroundColors,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    const value = context.raw || 0;
+                                    const total = context.chart.getDatasetMeta(0).total;
+                                    const percentage = total > 0 ? ((value / total) * 100).toFixed(2) + '%' : '0%';
+                                    
+                                    if (labelText.toLowerCase().includes('r$')) {
+                                        return `${label} ${formatarMoeda(value)} (${percentage})`;
+                                    } else {
+                                        return `${label} ${value} (${percentage})`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+                function updateChart(chartId, type, label, data) {
+            const ctx = document.getElementById(chartId).getContext('2d');
+            if (charts[chartId]) charts[chartId].destroy();
+            
+            charts[chartId] = new Chart(ctx, {
+                type: type, 
+                data: { 
+                    labels: Object.keys(data || {}), 
+                    datasets: [{ 
+                        label: label, 
+                        data: Object.values(data || {}), 
+                        backgroundColor: Object.values(CHART_COLORS), 
+                        borderWidth: 1 
+                    }] 
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    scales: { y: { beginAtZero: true } },
+                    onClick: (evt, elems) => {
+                        if (elems.length > 0) {
+                            const label = charts[chartId].data.labels[elems[0].index];
+                            const colMap = { 
+                                'g-margem-instalador': 'instalador_final', 
+                                'g-margem-servico': 'tipo_de_servico_final', 
+                                'g-lucro': 'instalador_final', 
+                                'g1': 'instalador_final', 
+                                'g3': 'cliente_final', 
+                                'g-custo-usuario': 'cliente_final',
+                                'g-custo-servico': 'tipo_de_servico_final',
+                                'g-custo-equipe-topsun': 'instalador_final',
+                                'g-equipes-retrabalhos': 'instalador_final',
+                            };
+                            if (colMap[chartId]) mostrarDetalhesModal(colMap[chartId], label);
+                        }
+                    }
+                }
+            });
+
+            // CORREÇÃO APLICADA AQUI
+            const rankingMap = {
+                'g-margem-instalador': 'top_instaladores_margem_lucro', 
+                'g-margem-servico': 'top_tipos_servico_margem_lucro',
+                'g-lucro': 'top_instaladores_lucratividade', 
+                'g1': 'top_instaladores_ordens',
+                'g3': 'top_clientes_ordens', 
+                'g-custo-usuario': 'top_clientes_custo',
+                'g-custo-servico': 'top_servicos_custo_medio', 
+                'g-custo-equipe-topsun': 'top_equipes_custo_topsun',
+                'g-equipes-retrabalhos': 'top_equipes_retrabalhos',
+            };
+
+            const titleElement = document.getElementById(`title-${chartId}`);
+            if (titleElement && rankingMap[chartId]) {
+                titleElement.style.cursor = 'pointer'; // Adiciona o cursor de clique
+                titleElement.onclick = null; 
+                titleElement.onclick = () => mostrarRankingModal(rankingMap[chartId]);
+            }
+        }
+
+        async function mostrarRankingModal(rankingType) {
+            const filtrosAtivos = {
+                instalador: document.getElementById('filtro-instalador').value, usuario: document.getElementById('filtro-usuario').value, cliente: document.getElementById('filtro-cliente').value,
+                resp_financeira: document.getElementById('filtro-resp_financeira').value, tipo_servico: document.getElementById('filtro-tipo_servico').value, categoria: document.getElementById('filtro-categoria').value,
+                status_os: document.getElementById('filtro-status').value, data_inicio: document.getElementById('filtro-data-inicio').value, data_fim: document.getElementById('filtro-data-fim').value,
+            };
+
+            const data = await handleFetch('/api/ranking-completo', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ranking: rankingType, filtros: filtrosAtivos, limite: 30 })
+            }, document.createElement('div'));
+
+            if (data) {
+                const modalElement = document.getElementById('rankingModal');
+                const modal = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
+
+                const modalTitle = document.getElementById('rankingModalLabel');
+                const tableHead = document.getElementById('ranking-tabela-head');
+                const tableBody = document.getElementById('ranking-tabela-body');
+                tableBody.innerHTML = '';
+
+                let headContent = '', titleText = '', isCurrency = false, isPercent = false, isQuantity = false;
+                const isRetrabalho = rankingType === 'top_equipes_retrabalhos';
+
+                switch (rankingType) {
+                    case 'top_instaladores_lucratividade': titleText = 'Ranking de Instaladores por Lucratividade'; headContent = `<tr><th>#</th><th>Instalador</th><th>Lucratividade Total</th></tr>`; isCurrency = true; break;
+                    case 'top_instaladores_ordens': titleText = 'Ranking de Instaladores por Qtd. Ordens'; headContent = `<tr><th>#</th><th>Instalador</th><th>Qtd. Ordens</th></tr>`; isQuantity = true; break;
+                    case 'top_tipos_servico_margem_lucro': titleText = 'Ranking de Tipos de Serviço por Margem de Lucro'; headContent = `<tr><th>#</th><th>Tipo de Serviço</th><th>Margem de Lucro Média</th></tr>`; isPercent = true; break;
+                    case 'top_clientes_ordens': titleText = 'Ranking de Clientes por Qtd. Obras'; headContent = `<tr><th>#</th><th>Cliente</th><th>Qtd. Obras</th></tr>`; isQuantity = true; break;
+                    case 'top_clientes_custo': titleText = 'Ranking de Clientes por Custo Total'; headContent = `<tr><th>#</th><th>Cliente</th><th>Custo Total</th></tr>`; isCurrency = true; break;
+                    case 'top_servicos_custo_medio': titleText = 'Ranking de Serviços por Custo Médio'; headContent = `<tr><th>#</th><th>Tipo de Serviço</th><th>Custo Médio</th></tr>`; isCurrency = true; break;
+                    case 'top_equipes_custo_topsun': titleText = 'Ranking de Equipes por Custo Médio (Resp: TOPSUN)'; headContent = `<tr><th>#</th><th>Equipe</th><th>Custo Médio</th></tr>`; isCurrency = true; break;
+                    case 'top_equipes_retrabalhos': titleText = 'Ranking de Equipes por Índice de Retrabalhos'; headContent = `<tr><th>#</th><th>Equipe (clique para ver detalhes)</th><th>Qtd. de Retrabalhos</th></tr>`; isQuantity = true; break;
+                }
+                
+                modalTitle.innerText = titleText.replace('Ranking', 'Ranking Top 30');
+                tableHead.innerHTML = headContent;
+
+                // --- CORREÇÃO APLICADA AQUI ---
+                if (data.length > 0) {
+                    data.forEach((item, index) => {
+                        let value = item[1];
+                        const equipeNome = item[0];
+                        if (isCurrency) value = formatarMoeda(value);
+                        else if (isPercent) value = `${(value || 0).toFixed(2)}%`;
+                        else if (isQuantity) value = `${value}`;
+                        
+                        const rowAttributes = isRetrabalho ? `onclick="mostrarDetalhesRetrabalhoEquipe('${equipeNome}')" style="cursor: pointer;"` : '';
+                        tableBody.innerHTML += `<tr ${rowAttributes}><td>${index + 1}</td><td>${equipeNome}</td><td>${value}</td></tr>`;
+                    });
+                } else {
+                    // Mensagem clara se não houver dados
+                    const colspan = headContent.match(/<th/g).length;
+                    tableBody.innerHTML = `<tr><td colspan="${colspan}" class="text-center p-3">Nenhum dado encontrado para este ranking com os filtros atuais.</td></tr>`;
+                }
+
+                modal.show();
+            }
+        }
+
+
+
+
+
+        async function mostrarDetalhesModal(coluna, valor) {
+            const filtrosAtivos = {
+                instalador: document.getElementById('filtro-instalador').value, data_inicio: document.getElementById('filtro-data-inicio').value, data_fim: document.getElementById('filtro-data-fim').value,
+            };
+            const data = await handleFetch('/api/detalhes-ranking', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ coluna, valor, filtros: filtrosAtivos })
+            }, document.createElement('div'));
+
+            if (data) {
+                document.getElementById('detalhesModalLabel').innerText = `Detalhes para ${coluna}: ${valor}`;
+                if ($.fn.DataTable.isDataTable('#detalhes-tabela')) $('#detalhes-tabela').DataTable().destroy();
+                $('#detalhes-tabela').DataTable({
+                    data: data,
+                    columns: [
+                        { title: "OS", data: "codigo_chamado" }, { title: "Projeto", data: "codigo_projeto" }, { title: "Cliente", data: "cliente_final" }, { title: "Cidade", data: "cidade_final" },
+                        { title: "Instalador", data: "instalador_final" }, { title: "Tipo Serviço", data: "tipo_de_servico_final" }, { title: "Status", data: "status_os" },
+                        { title: "Venda", data: "valor_venda", render: formatarMoeda }, { title: "Custo", data: "valor_custo", render: formatarMoeda },
+                        { title: "Lucro", data: "lucratividade", render: formatarMoeda }, { title: "Margem", data: "margem_lucro", render: d => `${(d || 0).toFixed(2)}%` },
+                        { title: "Conclusão", data: "data_conclusao_servico" },
+                    ],
+                    responsive: true, 
+                    language: { url: "https://cdn.datatables.net/plug-ins/2.0.8/i18n/pt-BR.json" }
+                } );
+                new bootstrap.Modal(document.getElementById('detalhesModal')).show();
+            }
+        }
+
+        function carregarTabelaOS() {
+            if ($.fn.DataTable.isDataTable('#tabela-os')) $('#tabela-os').DataTable().destroy();
+            $('#tabela-os').DataTable({
+                processing: true, serverSide: false, ajax: { url: "/api/dados-completos", dataSrc: "" },
+                columns: [
+                    { title: "OS", data: "codigo_chamado" }, { title: "Projeto", data: "codigo_projeto" }, { title: "Cliente", data: "cliente_final" }, { title: "Cidade", data: "cidade_final" },
+                    { title: "Instalador", data: "instalador_final" }, { title: "Tipo Serviço", data: "tipo_de_servico_final" }, { title: "Status", data: "status_os" },
+                    { title: "Venda", data: "valor_venda", render: formatarMoeda }, { title: "Custo", data: "valor_custo", render: formatarMoeda },
+                    { title: "Lucro", data: "lucratividade", render: formatarMoeda }, { title: "Margem", data: "margem_lucro", render: d => `${(d || 0).toFixed(2)}%` },
+                    { title: "Conclusão", data: "data_conclusao_servico" },
+                ],
+                responsive: true, 
+                language: { url: "https://cdn.datatables.net/plug-ins/2.0.8/i18n/pt-BR.json" }
+            } );
+        }
+        
+        // --- LÓGICA DA ABA DE MAPA ---
+        async function gerarMapa() {
+            const reparosFile = document.getElementById("reparosFile").files[0];
+            if (!reparosFile) {
+                document.getElementById("statusMapa").innerHTML = '<span class="text-danger">Selecione o arquivo de reparos.</span>';
+                return;
+            }
+            const formData = new FormData();
+            formData.append('reparosFile', reparosFile);
+            const data = await handleFetch('/api/processar-mapa', { method: 'POST', body: formData }, document.getElementById("statusMapa"));
+            if (data) {
+                todosOsReparos = data.dados_tabela.map(item => ({ ...item, tipo: 'reparo' }));
+                if (data.filtros_disponiveis) popularFiltrosMapa(data.filtros_disponiveis);
+                document.getElementById('filtros-mapa-container').style.display = 'block';
+                document.getElementById('tabela-mapa-container').style.display = 'block';
+                document.getElementById('busca-proximidade-container').style.display = 'block';
+                renderizarMapa();
+            }
+        }
+
+        async function uploadInstalacoes() {
+            const instalacoesFile = document.getElementById("instalacoesFile").files[0];
+            if (!instalacoesFile) {
+                document.getElementById("statusInstalacoes").innerHTML = '<span class="text-danger">Selecione o arquivo de instalações.</span>';
+                return;
+            }
+            const formData = new FormData();
+            formData.append('instalacoesFile', instalacoesFile);
+            const data = await handleFetch('/api/upload-instalacoes', { method: 'POST', body: formData }, document.getElementById("statusInstalacoes"));
+            if (data) {
+                todasAsInstalacoes = data.dados_tabela.map(item => ({ ...item, tipo: 'instalacao' }));
+                if (data.filtros_disponiveis) popularFiltrosMapa(data.filtros_disponiveis);
+                renderizarMapa();
+            }
+        }
+
+        function popularFiltrosMapa(filtros) {
+            const selectInstalador = document.getElementById('filtro-mapa-instalador');
+            const currentInstaladores = new Set(Array.from(selectInstalador.options).map(opt => opt.value).filter(Boolean));
+            (filtros.instaladores || []).forEach(item => currentInstaladores.add(item));
+            selectInstalador.innerHTML = '<option value="">Todos Instaladores</option>';
+            Array.from(currentInstaladores).sort().forEach(item => { selectInstalador.innerHTML += `<option value="${item}">${item}</option>`; });
+        }
+
+        function aplicarFiltrosMapa(limpar = false) {
+            if (limpar) {
+                document.getElementById('filtro-mapa-tipo').value = '';
+                document.getElementById('filtro-mapa-instalador').value = '';
+            }
+            renderizarMapa();
+        }
+
+        function renderizarMapa() {
+            if (!map) {
+                map = L.map('map').setView([-15.7801, -47.9292], 4);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }  ).addTo(map);
+            }
+            marcadores.clearLayers();
+            marcadoresBusca.clearLayers();
+
+            const filtroTipo = document.getElementById('filtro-mapa-tipo').value;
+            const filtroInstalador = document.getElementById('filtro-mapa-instalador').value;
+            
+            const dadosReparos = (filtroTipo === '' || filtroTipo === 'reparo') ? todosOsReparos.filter(item => !filtroInstalador || item.instalador === filtroInstalador) : [];
+            const dadosInstalacoes = (filtroTipo === '' || filtroTipo === 'instalacao') ? todasAsInstalacoes.filter(item => !filtroInstalador || item.instalador === filtroInstalador) : [];
+            const dadosParaExibir = [...dadosReparos, ...dadosInstalacoes];
+
+            const instaladoresCores = {};
+            let corIndex = 0;
+            dadosParaExibir.forEach(item => {
+                if (!instaladoresCores[item.instalador]) {
+                    instaladoresCores[item.instalador] = CORES_INSTALADORES[corIndex++ % CORES_INSTALADORES.length];
+                }
+                const cor = instaladoresCores[item.instalador];
+                const iconHtml = `<div style="background-color:${cor}; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 14px; font-weight: bold; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">${item.tipo === 'reparo' ? '🔧' : '⚡'}</div>`;
+                const customIcon = L.divIcon({ className: 'custom-div-icon', html: iconHtml, iconSize: [28, 28], iconAnchor: [14, 14] });
+                
+                if (item.latitude && item.longitude) {
+                    const marker = L.marker([item.latitude, item.longitude], { icon: customIcon });
+                    const popupContent = `<h6 style="margin:0 0 8px 0;color:${cor};font-weight:bold;">${item.tipo.toUpperCase()}</h6><p style="margin:4px 0;"><strong>Cliente:</strong> ${item.cliente}</p><p style="margin:4px 0;"><strong>Cidade:</strong> ${item.cidade}</p><p style="margin:4px 0;"><strong>Instalador:</strong> ${item.instalador}</p>`;
+                    marker.bindPopup(popupContent);
+                    marcadores.addLayer(marker);
+                }
+            });
+            map.addLayer(marcadores);
+            
+            if (marcadores.getLayers().length > 0) {
+                const featureGroup = L.featureGroup(marcadores.getLayers());
+                map.fitBounds(featureGroup.getBounds().pad(0.1));
+            }
+            
+            carregarTabelaMapa(dadosParaExibir);
+        }
+
+        function carregarTabelaMapa(dados) {
+            if ($.fn.DataTable.isDataTable('#tabela-mapa')) $('#tabela-mapa').DataTable().destroy();
+            $('#tabela-mapa').DataTable({
+                data: dados,
+                columns: [
+                    { title: "Tipo", data: "tipo", render: d => d === 'reparo' ? '<span class="badge bg-warning text-dark">🔧 Reparo</span>' : '<span class="badge bg-success">⚡ Instalação</span>' },
+                    { title: "Projeto", data: row => row.codigo_projeto || row.projeto || 'N/A' }, { title: "Cliente", data: "cliente" }, { title: "Cidade", data: "cidade" },
+                    { title: "Instalador", data: "instalador" }, { title: "Previsão", data: row => row.previsao_conclusao || row.data_previsao_instalacao || 'N/A' },
+                    { title: "Local", data: null, render: (d,t,r) => (r.latitude && r.longitude) ? `<button class="btn btn-sm btn-outline-primary" onclick="centralizarNoMapa(${r.latitude}, ${r.longitude})">Ver</button>` : 'N/A' }
+                ],
+                responsive: true, 
+                order: [[0, 'asc'], [5, 'asc']], 
+                language: { url: "https://cdn.datatables.net/plug-ins/2.0.8/i18n/pt-BR.json" }
+            } );
+        }
+
+        function centralizarNoMapa(lat, lng) {
+            if (map) {
+                map.setView([lat, lng], 15);
+                marcadores.eachLayer(layer => {
+                    if (layer.getLatLng().lat === lat && layer.getLatLng().lng === lng) layer.openPopup();
+                });
+            }
+        }
+
+        async function buscarProximidade() {
+            const endereco = document.getElementById('enderecoBusca').value;
+            if (!endereco) {
+                document.getElementById('statusBusca').innerHTML = '<span class="text-danger">Digite um endereço.</span>';
+                return;
+            }
+            const data = await handleFetch('/api/buscar-proximidade', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endereco }) }, document.getElementById("statusBusca"));
+            if (data) {
+                const listaBody = document.getElementById('lista-proximidade-body');
+                listaBody.innerHTML = '';
+                marcadoresBusca.clearLayers();
+                const { origem_lat, origem_lon, reparos_proximos } = data;
+                if (origem_lat && origem_lon) {
+                    const icon = L.divIcon({ className: 'custom-div-icon', html: '<div style="background-color:blue;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:18px;font-weight:bold;border:3px solid white;">🏠</div>', iconSize: [28, 28], iconAnchor: [14, 14] });
+                    marcadoresBusca.addLayer(L.marker([origem_lat, origem_lon], { icon, zIndexOffset: 1000 }).bindPopup('<b>Ponto de Partida</b>').addTo(map).openPopup());
+                }
+                reparos_proximos.forEach((item, index) => {
+                    listaBody.innerHTML += `<tr><td>${index + 1}</td><td>${item.tipo === 'reparo' ? '<span class="badge bg-warning text-dark">Reparo</span>' : '<span class="badge bg-success">Instalação</span>'}</td><td>${item.cliente}</td><td>${item.cidade}</td><td>${item.instalador}</td><td>${item.distancia_texto}</td><td>${item.tempo_viagem_texto}</td></tr>`;
+                    if (item.latitude && item.longitude) {
+                        const icon = L.divIcon({ className: 'custom-div-icon', html: `<div style="background-color:#0d6efd;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;border:2px solid white;">${index + 1}</div>`, iconSize: [24, 24], iconAnchor: [12, 12] });
+                        marcadoresBusca.addLayer(L.marker([item.latitude, item.longitude], { icon }).bindPopup(`<b>#${index + 1}: ${item.cliente}</b>  
+${item.distancia_texto}`));
+                        if (origem_lat && origem_lon) {
+                            const polyline = L.polyline([[origem_lat, origem_lon], [item.latitude, item.longitude]], { color: '#0d6efd', weight: 2, opacity: 0.7, dashArray: '5, 5' });
+                            polyline.bindTooltip(item.distancia_texto, { permanent: true, direction: 'center', className: 'distance-tooltip' });
+                            marcadoresBusca.addLayer(polyline);
+                        }
+                    }
+                });
+                map.addLayer(marcadoresBusca);
+                document.getElementById('lista-proximidade-container').style.display = 'block';
+                if (marcadoresBusca.getLayers().length > 0) {
+                    const featureGroup = L.featureGroup(marcadoresBusca.getLayers());
+                    map.fitBounds(
+featureGroup.getBounds().pad(0.2));
+                }
+            }
+        }
+        async function mostrarDetalhesRetrabalhoEquipe(equipe) {
+            const filtrosAtivos = {
+                data_inicio: document.getElementById('filtro-data-inicio').value,
+                data_fim: document.getElementById('filtro-data-fim').value,
+            };
+
+            // Mostra um feedback de carregamento dentro do modal
+            const modalTitle = document.getElementById('rankingModalLabel');
+            const tableHead = document.getElementById('ranking-tabela-head');
+            const tableBody = document.getElementById('ranking-tabela-body');
+            modalTitle.innerText = `Carregando detalhes para: ${equipe}...`;
+            tableBody.innerHTML = '<tr><td colspan="3" class="text-center p-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>';
+
+            const data = await handleFetch('/api/detalhes-retrabalho-equipe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ equipe: equipe, filtros: filtrosAtivos })
+            }, document.createElement('div')); // Usa um elemento temporário para não poluir a UI
+
+            if (data) {
+                // Apenas atualiza o conteúdo do modal que já está aberto.
+                modalTitle.innerText = `Detalhes de Retrabalho para: ${equipe}`;
+                tableHead.innerHTML = '<tr><th>Cliente</th><th>Tipo de Serviço</th><th>Total de Visitas</th></tr>';
+                tableBody.innerHTML = '';
+
+                if (data.length > 0) {
+                    data.forEach((item) => {
+                        tableBody.innerHTML += `<tr><td>${item.cliente}</td><td>${item.servico}</td><td>${item.visitas_totais}</td></tr>`;
+                    });
+                } else {
+                    tableBody.innerHTML = '<tr><td colspan="3" class="text-center p-3">Nenhum retrabalho (mesmo cliente/serviço mais de uma vez) encontrado para esta equipe.</td></tr>';
+                }
+            } else {
+                // Caso a chamada API falhe
+                modalTitle.innerText = `Erro ao buscar detalhes para: ${equipe}`;
+                tableBody.innerHTML = '<tr><td colspan="3" class="text-center p-3 text-danger">Não foi possível carregar os detalhes. Tente novamente.</td></tr>';
+            }
+        }
+
+
+        // --- INICIALIZAÇÃO ---
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelector('#mapa-reparos-tab').addEventListener('shown.bs.tab', () => {
+                if (map) {
+                    setTimeout(function() {
+                        map.invalidateSize();
+                    }, 10);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+

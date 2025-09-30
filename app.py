@@ -163,35 +163,35 @@ def estatisticas():
         
         lucro_total = df_filtrado['lucratividade'].sum()
         venda_total = df_filtrado['valor_venda'].sum()
+        
+        # --- CORREÇÃO APLICADA AQUI ---
+        # Calcula o custo total dos dados filtrados
+        custo_total_geral = df_filtrado['valor_custo'].sum()
 
         def get_top_sum(df, group_col, sum_col): return df.groupby(group_col)[sum_col].sum().nlargest(5).to_dict()
         def get_top_count(df, group_col): return df[group_col].value_counts().nlargest(5).to_dict()
         def get_top_mean(df, group_col, mean_col): return df.groupby(group_col)[mean_col].mean().nlargest(5).to_dict()
+        def get_all_sum_sorted(df, group_col, sum_col):
+            if df.empty or group_col not in df.columns or sum_col not in df.columns:
+                return {}
+            series = df.groupby(group_col)[sum_col].sum()
+            # --- CORREÇÃO APLICADA AQUI: Filtra valores maiores que zero ---
+            series_filtrada = series.where(series > 0).dropna()
+            return series_filtrada.sort_values(ascending=False).to_dict()
 
-        # --- LÓGICA DE RETRABALHO REFINADA E BLINDADA ---
+        # Lógica de Retrabalho
         total_retrabalhos_por_equipe = {}
         colunas_retrabalho = ['cliente_final', 'instalador_final', 'tipo_de_servico_final']
         if all(col in df_filtrado.columns for col in colunas_retrabalho):
-            # 1. Remove linhas onde qualquer uma das colunas chave é nula
             df_retrabalho = df_filtrado.dropna(subset=colunas_retrabalho).copy()
-            
-            # 2. Garante que os dados são strings para um agrupamento consistente
-            for col in colunas_retrabalho:
-                df_retrabalho[col] = df_retrabalho[col].astype(str)
-
-            # 3. Agrupa pela combinação única
+            for col in colunas_retrabalho: df_retrabalho[col] = df_retrabalho[col].astype(str)
             combinacoes = df_retrabalho.groupby(colunas_retrabalho).size()
-            
-            # 4. Filtra apenas as combinações que ocorreram mais de uma vez (retrabalhos)
             retrabalhos = combinacoes[combinacoes > 1].reset_index(name='contagem')
-            
             if not retrabalhos.empty:
-                # 5. Para cada retrabalho, subtrai 1 para contar apenas as visitas extras.
                 retrabalhos['contagem'] = retrabalhos['contagem'] - 1
-                # 6. Agrupa por instalador e soma os retrabalhos
                 total_retrabalhos_por_equipe = retrabalhos.groupby('instalador_final')['contagem'].sum()
 
-        # --- LÓGICA DE CUSTO MÉDIO TOPSUN REFINADA ---
+        # Lógica de Custo TOPSUN
         df_topsun = df_filtrado[df_filtrado['resp_financeira_final'].str.strip().str.upper() == 'TOPSUN'].copy()
 
         resultado = {
@@ -199,6 +199,12 @@ def estatisticas():
             "kpi_margem_lucro_geral": (lucro_total / venda_total * 100) if venda_total > 0 else 0,
             "kpi_valor_venda_total": venda_total,
             "kpi_total_ordens": len(df_filtrado),
+            
+            # --- NOVO DADO ENVIADO PARA O FRONTEND ---
+            "kpi_custo_total_geral": custo_total_geral,
+            
+            "custo_total_por_instalador": get_all_sum_sorted(df_filtrado, 'instalador_final', 'valor_custo'),
+            
             "top_instaladores_margem_lucro": get_top_mean(df_filtrado, 'instalador_final', 'margem_lucro'),
             "top_tipos_servico_margem_lucro": get_top_mean(df_filtrado, 'tipo_de_servico_final', 'margem_lucro'),
             "top_instaladores_lucratividade": get_top_sum(df_filtrado, 'instalador_final', 'lucratividade'),
@@ -219,6 +225,7 @@ def estatisticas():
         app.logger.error(f"Erro em /api/estatisticas: {str(e)}")
         traceback.print_exc()
         return jsonify({"erro": f"Erro ao calcular estatísticas: {str(e)}"}), 500
+
 
 
 @app.route("/api/ranking-completo", methods=["POST"])
@@ -265,6 +272,7 @@ def ranking_completo():
         # Lógica para todos os outros rankings
         else:
             rankings_map = {
+                'top_instaladores_custo_total': ('sum', 'instalador_final', 'valor_custo'),
                 'top_instaladores_lucratividade': ('sum', 'instalador_final', 'lucratividade'),
                 'top_instaladores_ordens': ('count', 'instalador_final', None),
                 'top_instaladores_margem_lucro': ('mean', 'instalador_final', 'margem_lucro'),

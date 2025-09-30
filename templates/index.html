@@ -93,7 +93,7 @@
             <div class="tab-pane fade show active" id="analise-custos-pane" role="tabpanel" tabindex="0">
                 <section class="card p-4 mb-4">
                      <div class="row align-items-end">
-                        <div class="col-lg-7"><h5 class="fw-bold mb-3">🚀 Iniciar Análise de Custos</h5><div class="row"><div class="col-md-6 mb-2"><label for="custosFile" class="form-label small">Planilha de Custos (17 colunas )</label><input type="file" id="custosFile" class="form-control form-control-sm" accept=".xlsx,.xls"></div><div class="col-md-6 mb-2"><label for="tarefasFile" class="form-label small">Planilha de Tarefas (24 colunas)</label><input type="file" id="tarefasFile" class="form-control form-control-sm" accept=".xlsx,.xls"></div></div></div>
+                        <div class="col-lg-7"><h5 class="fw-bold mb-3">🚀 Iniciar Análise de Custos</h5><div class="row"><div class="col-md-6 mb-2"><label for="custosFile" class="form-label small">Planilha de Custos</label><input type="file" id="custosFile" class="form-control form-control-sm" accept=".xlsx,.xls"></div><div class="col-md-6 mb-2"><label for="tarefasFile" class="form-label small">Planilha de Tarefas</label><input type="file" id="tarefasFile" class="form-control form-control-sm" accept=".xlsx,.xls"></div></div></div>
                         <div class="col-lg-2 d-grid mb-2"><button class="btn text-white" style="background-color: var(--primary-color);" onclick="uploadPlanilhas()">Analisar Dados</button></div>
                         <div class="col-lg-3 mb-2"><div id="statusMsg" class="text-center small h-100 d-flex align-items-center justify-content-center"></div></div>
                     </div>
@@ -161,6 +161,21 @@
                         <div class="col-lg-3 col-md-6 mb-4"><div class="card kpi-card"><div id="kpi-valor-venda-total" class="kpi-value" style="color: var(--primary-color);">R$ 0,00</div><div class="kpi-label">Venda Total</div></div></div>
                         <div class="col-lg-3 col-md-6 mb-4"><div class="card kpi-card"><div id="kpi-total-ordens" class="kpi-value">0</div><div class="kpi-label">Total de Ordens</div></div></div>
                     </section>
+
+                    <!-- NOVO GRÁFICO PRINCIPAL -->
+                    <section class="row mb-4">
+                        <div class="col-12 mb-4">
+                            <div class="card chart-container" style="height: 450px;">
+                                <a id="title-g-custo-total-instalador" class="text-decoration-none text-dark">
+                                    <h5>Custo Total por Instalador (Todas as Equipes)</h5>
+                                    <span id="kpi-custo-total-grafico" class="badge bg-primary fs-6">R$ 0,00</span>
+                                </a>
+                                <canvas id="g-custo-total-instalador"></canvas>
+                            </div>
+                        </div>
+                    </section>
+                    <!-- FIM DO NOVO GRÁFICO -->
+
                     <section class="row mb-4">
                         <div class="col-lg-6 col-md-12 mb-4">
                             <div class="card chart-container">
@@ -299,7 +314,6 @@
                 </section>
 
                 <section class="row mb-4"><div class="col-12"><div id="map"></div></div></section>
-
                 <section id="lista-proximidade-container" class="row mb-5" style="display: none;">
                     <div class="col-12">
                         <div class="card p-4">
@@ -337,10 +351,10 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
-               // --- VARIÁVEIS GLOBAIS ---
+        // --- VARIÁVEIS GLOBAIS ---
         let charts = {};
         let map;
-        let marcadores = L.layerGroup( );
+        let marcadores = L.layerGroup(  );
         let marcadoresBusca = L.layerGroup();
         let todosOsReparos = [];
         let todasAsInstalacoes = [];
@@ -369,7 +383,6 @@
                 return null;
             }
         }
-
         // --- LÓGICA DA ABA DE ANÁLISE DE CUSTOS ---
         async function uploadPlanilhas() {
             const custosFile = document.getElementById("custosFile").files[0];
@@ -412,7 +425,9 @@
                 document.getElementById('kpi-margem-lucro-geral').innerText = `${(data.kpi_margem_lucro_geral || 0).toFixed(2)}%`;
                 document.getElementById('kpi-valor-venda-total').innerText = formatarMoeda(data.kpi_valor_venda_total);
                 document.getElementById('kpi-total-ordens').innerText = data.kpi_total_ordens;
+                document.getElementById('kpi-custo-total-grafico').innerText = formatarMoeda(data.kpi_custo_total_geral);
                 
+                updateChart('g-custo-total-instalador', 'bar', 'Custo Total (R$)', data.custo_total_por_instalador);
                 updateChart('g-margem-instalador', 'bar', 'Margem de Lucro (%)', data.top_instaladores_margem_lucro);
                 updateChart('g-margem-servico', 'bar', 'Margem de Lucro (%)', data.top_tipos_servico_margem_lucro);
                 updateChart('g-lucro', 'bar', 'Lucro Total (R$)', data.top_instaladores_lucratividade);
@@ -448,7 +463,6 @@
             const backgroundColors = labels.map(label => {
                 if (label.toUpperCase().includes('TOPSUN')) return '#e6194B';
                 if (label.toUpperCase().includes('CLIENTE')) return '#3cb44b';
-                // Fallback color
                 const colorKeys = Object.keys(CHART_COLORS);
                 const randomKey = colorKeys[Math.floor(Math.random() * colorKeys.length)];
                 return CHART_COLORS[randomKey];
@@ -495,8 +509,7 @@
                 }
             });
         }
-
-                function updateChart(chartId, type, label, data) {
+        function updateChart(chartId, type, label, data) {
             const ctx = document.getElementById(chartId).getContext('2d');
             if (charts[chartId]) charts[chartId].destroy();
             
@@ -528,6 +541,7 @@
                                 'g-custo-servico': 'tipo_de_servico_final',
                                 'g-custo-equipe-topsun': 'instalador_final',
                                 'g-equipes-retrabalhos': 'instalador_final',
+                                'g-custo-total-instalador': 'instalador_final'
                             };
                             if (colMap[chartId]) mostrarDetalhesModal(colMap[chartId], label);
                         }
@@ -535,8 +549,8 @@
                 }
             });
 
-            // CORREÇÃO APLICADA AQUI
             const rankingMap = {
+                'g-custo-total-instalador': 'top_instaladores_custo_total',
                 'g-margem-instalador': 'top_instaladores_margem_lucro', 
                 'g-margem-servico': 'top_tipos_servico_margem_lucro',
                 'g-lucro': 'top_instaladores_lucratividade', 
@@ -550,7 +564,7 @@
 
             const titleElement = document.getElementById(`title-${chartId}`);
             if (titleElement && rankingMap[chartId]) {
-                titleElement.style.cursor = 'pointer'; // Adiciona o cursor de clique
+                titleElement.style.cursor = 'pointer';
                 titleElement.onclick = null; 
                 titleElement.onclick = () => mostrarRankingModal(rankingMap[chartId]);
             }
@@ -581,6 +595,8 @@
                 const isRetrabalho = rankingType === 'top_equipes_retrabalhos';
 
                 switch (rankingType) {
+                    case 'top_instaladores_custo_total': titleText = 'Ranking de Instaladores por Custo Total'; headContent = `<tr><th>#</th><th>Instalador</th><th>Custo Total</th></tr>`; isCurrency = true; break;
+                    case 'top_instaladores_custo_total': titleText = 'Ranking de Instaladores por Custo Total'; headContent = `<tr><th>#</th><th>Instalador</th><th>Custo Total</th></tr>`; isCurrency = true; break;
                     case 'top_instaladores_lucratividade': titleText = 'Ranking de Instaladores por Lucratividade'; headContent = `<tr><th>#</th><th>Instalador</th><th>Lucratividade Total</th></tr>`; isCurrency = true; break;
                     case 'top_instaladores_ordens': titleText = 'Ranking de Instaladores por Qtd. Ordens'; headContent = `<tr><th>#</th><th>Instalador</th><th>Qtd. Ordens</th></tr>`; isQuantity = true; break;
                     case 'top_tipos_servico_margem_lucro': titleText = 'Ranking de Tipos de Serviço por Margem de Lucro'; headContent = `<tr><th>#</th><th>Tipo de Serviço</th><th>Margem de Lucro Média</th></tr>`; isPercent = true; break;
@@ -594,7 +610,6 @@
                 modalTitle.innerText = titleText.replace('Ranking', 'Ranking Top 30');
                 tableHead.innerHTML = headContent;
 
-                // --- CORREÇÃO APLICADA AQUI ---
                 if (data.length > 0) {
                     data.forEach((item, index) => {
                         let value = item[1];
@@ -607,7 +622,6 @@
                         tableBody.innerHTML += `<tr ${rowAttributes}><td>${index + 1}</td><td>${equipeNome}</td><td>${value}</td></tr>`;
                     });
                 } else {
-                    // Mensagem clara se não houver dados
                     const colspan = headContent.match(/<th/g).length;
                     tableBody.innerHTML = `<tr><td colspan="${colspan}" class="text-center p-3">Nenhum dado encontrado para este ranking com os filtros atuais.</td></tr>`;
                 }
@@ -615,10 +629,41 @@
                 modal.show();
             }
         }
+        async function mostrarDetalhesRetrabalhoEquipe(equipe) {
+            const filtrosAtivos = {
+                data_inicio: document.getElementById('filtro-data-inicio').value,
+                data_fim: document.getElementById('filtro-data-fim').value,
+            };
 
+            const modalTitle = document.getElementById('rankingModalLabel');
+            const tableHead = document.getElementById('ranking-tabela-head');
+            const tableBody = document.getElementById('ranking-tabela-body');
+            modalTitle.innerText = `Carregando detalhes para: ${equipe}...`;
+            tableBody.innerHTML = '<tr><td colspan="3" class="text-center p-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>';
 
+            const data = await handleFetch('/api/detalhes-retrabalho-equipe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ equipe: equipe, filtros: filtrosAtivos })
+            }, document.createElement('div'));
 
+            if (data) {
+                modalTitle.innerText = `Detalhes de Retrabalho para: ${equipe}`;
+                tableHead.innerHTML = '<tr><th>Cliente</th><th>Tipo de Serviço</th><th>Total de Visitas</th></tr>';
+                tableBody.innerHTML = '';
 
+                if (data.length > 0) {
+                    data.forEach((item) => {
+                        tableBody.innerHTML += `<tr><td>${item.cliente}</td><td>${item.servico}</td><td>${item.visitas_totais}</td></tr>`;
+                    });
+                } else {
+                    tableBody.innerHTML = '<tr><td colspan="3" class="text-center p-3">Nenhum retrabalho (mesmo cliente/serviço mais de uma vez) encontrado para esta equipe.</td></tr>';
+                }
+            } else {
+                modalTitle.innerText = `Erro ao buscar detalhes para: ${equipe}`;
+                tableBody.innerHTML = '<tr><td colspan="3" class="text-center p-3 text-danger">Não foi possível carregar os detalhes. Tente novamente.</td></tr>';
+            }
+        }
 
         async function mostrarDetalhesModal(coluna, valor) {
             const filtrosAtivos = {
@@ -719,7 +764,7 @@
         function renderizarMapa() {
             if (!map) {
                 map = L.map('map').setView([-15.7801, -47.9292], 4);
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }  ).addTo(map);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' } ).addTo(map);
             }
             marcadores.clearLayers();
             marcadoresBusca.clearLayers();
@@ -783,7 +828,7 @@
             }
         }
 
-        async function buscarProximidade() {
+                async function buscarProximidade() {
             const endereco = document.getElementById('enderecoBusca').value;
             if (!endereco) {
                 document.getElementById('statusBusca').innerHTML = '<span class="text-danger">Digite um endereço.</span>';
@@ -816,47 +861,8 @@ ${item.distancia_texto}`));
                 document.getElementById('lista-proximidade-container').style.display = 'block';
                 if (marcadoresBusca.getLayers().length > 0) {
                     const featureGroup = L.featureGroup(marcadoresBusca.getLayers());
-                    map.fitBounds(
-featureGroup.getBounds().pad(0.2));
+                    map.fitBounds(featureGroup.getBounds().pad(0.2));
                 }
-            }
-        }
-        async function mostrarDetalhesRetrabalhoEquipe(equipe) {
-            const filtrosAtivos = {
-                data_inicio: document.getElementById('filtro-data-inicio').value,
-                data_fim: document.getElementById('filtro-data-fim').value,
-            };
-
-            // Mostra um feedback de carregamento dentro do modal
-            const modalTitle = document.getElementById('rankingModalLabel');
-            const tableHead = document.getElementById('ranking-tabela-head');
-            const tableBody = document.getElementById('ranking-tabela-body');
-            modalTitle.innerText = `Carregando detalhes para: ${equipe}...`;
-            tableBody.innerHTML = '<tr><td colspan="3" class="text-center p-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>';
-
-            const data = await handleFetch('/api/detalhes-retrabalho-equipe', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ equipe: equipe, filtros: filtrosAtivos })
-            }, document.createElement('div')); // Usa um elemento temporário para não poluir a UI
-
-            if (data) {
-                // Apenas atualiza o conteúdo do modal que já está aberto.
-                modalTitle.innerText = `Detalhes de Retrabalho para: ${equipe}`;
-                tableHead.innerHTML = '<tr><th>Cliente</th><th>Tipo de Serviço</th><th>Total de Visitas</th></tr>';
-                tableBody.innerHTML = '';
-
-                if (data.length > 0) {
-                    data.forEach((item) => {
-                        tableBody.innerHTML += `<tr><td>${item.cliente}</td><td>${item.servico}</td><td>${item.visitas_totais}</td></tr>`;
-                    });
-                } else {
-                    tableBody.innerHTML = '<tr><td colspan="3" class="text-center p-3">Nenhum retrabalho (mesmo cliente/serviço mais de uma vez) encontrado para esta equipe.</td></tr>';
-                }
-            } else {
-                // Caso a chamada API falhe
-                modalTitle.innerText = `Erro ao buscar detalhes para: ${equipe}`;
-                tableBody.innerHTML = '<tr><td colspan="3" class="text-center p-3 text-danger">Não foi possível carregar os detalhes. Tente novamente.</td></tr>';
             }
         }
 
@@ -874,4 +880,3 @@ featureGroup.getBounds().pad(0.2));
     </script>
 </body>
 </html>
-
